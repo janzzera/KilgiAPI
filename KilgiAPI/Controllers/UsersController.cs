@@ -60,6 +60,7 @@ namespace KilgiAPI.Controllers
         }
 
         [HttpPost]
+        [AllowAnonymous]
         public async Task<ActionResult<User>> PostUser(User user)
         {
             _context.Users.Add(user);
