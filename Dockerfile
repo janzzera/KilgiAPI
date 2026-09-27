@@ -16,7 +16,6 @@ WORKDIR /app
 COPY --from=build-env /app/out .
 
 # Render dynamically assigns a port via the PORT environment variable. 
-# This tells ASP.NET Core to listen on the port assigned by Render.
 ENV ASPNETCORE_URLS=http://+:${PORT}
 
 ENTRYPOINT ["dotnet", "KilgiAPI.dll"]
