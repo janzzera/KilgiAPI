@@ -1,6 +1,14 @@
 @KilgiAPI_HostAddress = http://localhost:5041
 
-GET {{KilgiAPI_HostAddress}}/weatherforecast/
-Accept: application/json
+POST {{KilgiAPI_HostAddress}}/api/users/
+Content-Type: application/json
 
-###
+{
+                "user_id": "user-101",
+                "username": "johnhista",
+                "display_name": "john hista",
+                "business_name": "johnmerchandising",
+                "email_address": "john@gmail.com",
+                "mobile_number": "09111111111",
+                "account_status": "active"
+}

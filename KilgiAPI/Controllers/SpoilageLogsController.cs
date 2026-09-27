@@ -1,14 +1,15 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using KilgiAPI.Data;
+using KilgiAPI.Models;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using KilgiAPI.Models;
-using KilgiAPI.Data;
-using System.Runtime.CompilerServices;
 
 namespace KilgiAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class SpoilageLogsController : ControllerBase
     {
         private readonly AppDbContext _context;

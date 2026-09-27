@@ -1,10 +1,12 @@
+using KilgiAPI.Data;
+using KilgiAPI.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using KilgiAPI.Models;
-using KilgiAPI.Data;
 
 [Route("api/[controller]")]
 [ApiController]
+[Authorize]
 public class JournalEntriesController : ControllerBase
 {
     private readonly AppDbContext _context;

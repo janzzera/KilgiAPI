@@ -1,13 +1,15 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using KilgiAPI.Data;
+using KilgiAPI.Models;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using KilgiAPI.Data;
-using KilgiAPI.Models;
 
 namespace KilgiAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class UsersController : ControllerBase
     {
         private readonly AppDbContext _context = new AppDbContext();

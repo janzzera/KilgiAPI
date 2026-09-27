@@ -2,9 +2,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using KilgiAPI.Models;
 using KilgiAPI.Data;
+using Microsoft.AspNetCore.Authorization;
 
 [Route("api/[controller]")]
 [ApiController]
+[Authorize]
 public class AccountingPeriodsController : ControllerBase
 {
     private readonly AppDbContext _context;
