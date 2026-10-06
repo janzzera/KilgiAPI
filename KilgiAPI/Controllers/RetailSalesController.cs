@@ -4,98 +4,127 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-[Route("api/[controller]")]
-[ApiController]
-[Authorize]
-public class RetailSalesController : ControllerBase
+namespace KilgiAPI.Controllers
 {
-    private readonly AppDbContext _context;
-    public RetailSalesController(AppDbContext context)
+    [Route("api/[controller]")]
+    public class RetailSalesController : BaseApiController
     {
-        _context = context;
-    }
-
-    // GET: api/RetailSale
-    [HttpGet]
-    public async Task<ActionResult<IEnumerable<RetailSale>>> GetRetailSale()
-    {
-        return await _context.RetailSales.ToListAsync();
-    }
-
-    // GET: api/RetailSale/5
-    [HttpGet("{saleid}")]
-    public async Task<ActionResult<RetailSale>> GetRetailSale(string saleid)
-    {
-        var retailsale = await _context.RetailSales.FindAsync(saleid);
-
-        if (retailsale == null)
+        public RetailSalesController(AppDbContext context) : base(context)
         {
-            return NotFound();
         }
 
-        return retailsale;
-    }
-
-    // PUT: api/RetailSale/5
-    // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-    [HttpPut("{saleid}")]
-    public async Task<IActionResult> PutRetailSale(string? saleid, RetailSale retailsale)
-    {
-        if (saleid != retailsale.SaleId)
+        // GET: api/RetailSales
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<RetailSale>>> GetRetailSale()
         {
-            return BadRequest();
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            return await _context.RetailSales.Where(e => e.UserId == userId).ToListAsync();
         }
 
-        _context.Entry(retailsale).State = EntityState.Modified;
+        // GET: api/RetailSales/5
+        [HttpGet("{saleid}")]
+        public async Task<ActionResult<RetailSale>> GetRetailSale(string saleid)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
 
-        try
-        {
-            await _context.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (!RetailSaleExists(saleid))
+            var retailsale = await _context.RetailSales
+                .FirstOrDefaultAsync(e => e.SaleId == saleid && e.UserId == userId);
+
+            if (retailsale == null)
             {
                 return NotFound();
             }
-            else
-            {
-                throw;
-            }
+
+            return retailsale;
         }
 
-        return NoContent();
-    }
-
-    // POST: api/RetailSale
-    // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-    [HttpPost]
-    public async Task<ActionResult<RetailSale>> PostRetailSale(RetailSale retailsale)
-    {
-        _context.RetailSales.Add(retailsale);
-        await _context.SaveChangesAsync();
-
-        return CreatedAtAction("GetRetailSale", new { saleid = retailsale.SaleId }, retailsale);
-    }
-
-    // DELETE: api/RetailSale/5
-    [HttpDelete("{saleid}")]
-    public async Task<IActionResult> DeleteRetailSale(string? saleid)
-    {
-        var retailsale = await _context.RetailSales.FindAsync(saleid);
-        if (retailsale == null)
+        // PUT: api/RetailSales/5
+        [HttpPut("{saleid}")]
+        public async Task<IActionResult> PutRetailSale(string? saleid, RetailSale retailsale)
         {
-            return NotFound();
+            if (saleid != retailsale.SaleId)
+            {
+                return BadRequest();
+            }
+
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            var exists = await _context.RetailSales
+                .AnyAsync(e => e.SaleId == saleid && e.UserId == userId);
+            if (!exists)
+            {
+                return NotFound();
+            }
+
+            retailsale.UserId = userId;
+            _context.Entry(retailsale).State = EntityState.Modified;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                if (!RetailSaleExists(saleid, userId))
+                {
+                    return NotFound();
+                }
+                else
+                {
+                    throw;
+                }
+            }
+
+            return NoContent();
         }
 
-        _context.RetailSales.Remove(retailsale);
-        await _context.SaveChangesAsync();
+        // POST: api/RetailSales
+        [HttpPost]
+        public async Task<ActionResult<RetailSale>> PostRetailSale(RetailSale retailsale)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
 
-        return NoContent();
-    }
+            retailsale.UserId = userId;
+            _context.RetailSales.Add(retailsale);
+            await _context.SaveChangesAsync();
 
-    private bool RetailSaleExists(string? saleid)
-    {
-        return _context.RetailSales.Any(e => e.SaleId == saleid);
+            return CreatedAtAction("GetRetailSale", new { saleid = retailsale.SaleId }, retailsale);
+        }
+
+        // DELETE: api/RetailSales/5
+        [HttpDelete("{saleid}")]
+        public async Task<IActionResult> DeleteRetailSale(string? saleid)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            var retailsale = await _context.RetailSales
+                .FirstOrDefaultAsync(e => e.SaleId == saleid && e.UserId == userId);
+            if (retailsale == null)
+            {
+                return NotFound();
+            }
+
+            _context.RetailSales.Remove(retailsale);
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+
+        private bool RetailSaleExists(string? saleid, string userId)
+        {
+            return _context.RetailSales.Any(e => e.SaleId == saleid && e.UserId == userId);
+        }
     }
 }
+

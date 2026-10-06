@@ -1,4 +1,4 @@
-﻿using KilgiAPI.Data;
+using KilgiAPI.Data;
 using KilgiAPI.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -8,26 +8,31 @@ using Microsoft.EntityFrameworkCore;
 namespace KilgiAPI.Controllers
 {
     [Route("api/[controller]")]
-    [ApiController]
-    [Authorize]
-    public class SpoilageLogsController : ControllerBase
+    public class SpoilageLogsController : BaseApiController
     {
-        private readonly AppDbContext _context;
-        public SpoilageLogsController(AppDbContext context)
+        public SpoilageLogsController(AppDbContext context) : base(context)
         {
-            _context = context;
         }
 
         [HttpGet]
         public async Task<ActionResult<IEnumerable<SpoilageLog>>> GetSpoilageLog()
         {
-            return await _context.SpoilageLogs.ToListAsync();
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            return await _context.SpoilageLogs.Where(s => s.Lot.UserId == userId).ToListAsync();
         }
 
         [HttpGet("{logId}")]
         public async Task<ActionResult<SpoilageLog>> GetSpoilageLog(string logId)
         {
-            var spoilageLog = await _context.SpoilageLogs.FindAsync(logId);
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            var spoilageLog = await _context.SpoilageLogs
+                .FirstOrDefaultAsync(s => s.LogId == logId && s.Lot.UserId == userId);
 
             if (spoilageLog == null)
             {
@@ -45,19 +50,40 @@ namespace KilgiAPI.Controllers
                 return BadRequest();
             }
 
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            var exists = await _context.SpoilageLogs
+                .AnyAsync(s => s.LogId == logId && s.Lot.UserId == userId);
+            if (!exists)
+            {
+                return NotFound();
+            }
+
+            var lotBelongsToUser = await _context.Lots
+                .AnyAsync(l => l.LotId == spoilageLog.LotId && l.UserId == userId);
+            if (!lotBelongsToUser)
+            {
+                return BadRequest("The specified Lot does not exist or does not belong to the current user.");
+            }
+
             _context.Entry(spoilageLog).State = EntityState.Modified;
 
             try
             {
                 await _context.SaveChangesAsync();
-            } catch (DbUpdateConcurrencyException)
+            }
+            catch (DbUpdateConcurrencyException)
             {
-                if (!LogExists(logId))
+                if (!LogExists(logId, userId))
                 {
                     return NotFound();
                 }
                 else
+                {
                     throw;
+                }
             }
 
             return NoContent();
@@ -66,16 +92,32 @@ namespace KilgiAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<SpoilageLog>> PostSpoilageLog(SpoilageLog spoilageLog)
         {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            var lotBelongsToUser = await _context.Lots
+                .AnyAsync(l => l.LotId == spoilageLog.LotId && l.UserId == userId);
+            if (!lotBelongsToUser)
+            {
+                return BadRequest("The specified Lot does not exist or does not belong to the current user.");
+            }
+
             _context.SpoilageLogs.Add(spoilageLog);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction("GetSpoilageLog", new {logId =  spoilageLog.LogId}, spoilageLog);
+            return CreatedAtAction("GetSpoilageLog", new { logId = spoilageLog.LogId }, spoilageLog);
         }
 
         [HttpDelete("{logId}")]
         public async Task<IActionResult> DeleteSpoilageLog(string? logId)
         {
-            var spoilageLog = await _context.SpoilageLogs.FindAsync(logId);
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            var spoilageLog = await _context.SpoilageLogs
+                .FirstOrDefaultAsync(s => s.LogId == logId && s.Lot.UserId == userId);
             if (spoilageLog == null)
             {
                 return NotFound();
@@ -87,8 +129,10 @@ namespace KilgiAPI.Controllers
             return NoContent();
         }
 
-        private bool LogExists(string logId) {
-            return _context.SpoilageLogs.Any(log => log.LogId == logId);
+        private bool LogExists(string logId, string userId)
+        {
+            return _context.SpoilageLogs.Any(log => log.LogId == logId && log.Lot.UserId == userId);
         }
     }
 }
+

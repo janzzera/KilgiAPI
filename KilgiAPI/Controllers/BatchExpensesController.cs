@@ -4,98 +4,136 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-[Route("api/[controller]")]
-[ApiController]
-[Authorize]
-public class BatchExpensesController : ControllerBase
+namespace KilgiAPI.Controllers
 {
-    private readonly AppDbContext _context;
-    public BatchExpensesController(AppDbContext context)
+    [Route("api/[controller]")]
+    public class BatchExpensesController : BaseApiController
     {
-        _context = context;
-    }
-
-    // GET: api/BatchExpense
-    [HttpGet]
-    public async Task<ActionResult<IEnumerable<BatchExpense>>> GetBatchExpense()
-    {
-        return await _context.BatchExpenses.ToListAsync();
-    }
-
-    // GET: api/BatchExpense/5
-    [HttpGet("{expenseid}")]
-    public async Task<ActionResult<BatchExpense>> GetBatchExpense(string expenseid)
-    {
-        var batchexpense = await _context.BatchExpenses.FindAsync(expenseid);
-
-        if (batchexpense == null)
+        public BatchExpensesController(AppDbContext context) : base(context)
         {
-            return NotFound();
         }
 
-        return batchexpense;
-    }
-
-    // PUT: api/BatchExpense/5
-    // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-    [HttpPut("{expenseid}")]
-    public async Task<IActionResult> PutBatchExpense(string? expenseid, BatchExpense batchexpense)
-    {
-        if (expenseid != batchexpense.ExpenseId)
+        // GET: api/BatchExpenses
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<BatchExpense>>> GetBatchExpense()
         {
-            return BadRequest();
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            return await _context.BatchExpenses.Where(e => e.Lot.UserId == userId).ToListAsync();
         }
 
-        _context.Entry(batchexpense).State = EntityState.Modified;
+        // GET: api/BatchExpenses/5
+        [HttpGet("{expenseid}")]
+        public async Task<ActionResult<BatchExpense>> GetBatchExpense(string expenseid)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
 
-        try
-        {
-            await _context.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (!BatchExpenseExists(expenseid))
+            var batchexpense = await _context.BatchExpenses
+                .FirstOrDefaultAsync(e => e.ExpenseId == expenseid && e.Lot.UserId == userId);
+
+            if (batchexpense == null)
             {
                 return NotFound();
             }
-            else
-            {
-                throw;
-            }
+
+            return batchexpense;
         }
 
-        return NoContent();
-    }
-
-    // POST: api/BatchExpense
-    // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-    [HttpPost]
-    public async Task<ActionResult<BatchExpense>> PostBatchExpense(BatchExpense batchexpense)
-    {
-        _context.BatchExpenses.Add(batchexpense);
-        await _context.SaveChangesAsync();
-
-        return CreatedAtAction("GetBatchExpense", new { expenseid = batchexpense.ExpenseId }, batchexpense);
-    }
-
-    // DELETE: api/BatchExpense/5
-    [HttpDelete("{expenseid}")]
-    public async Task<IActionResult> DeleteBatchExpense(string? expenseid)
-    {
-        var batchexpense = await _context.BatchExpenses.FindAsync(expenseid);
-        if (batchexpense == null)
+        // PUT: api/BatchExpenses/5
+        [HttpPut("{expenseid}")]
+        public async Task<IActionResult> PutBatchExpense(string? expenseid, BatchExpense batchexpense)
         {
-            return NotFound();
+            if (expenseid != batchexpense.ExpenseId)
+            {
+                return BadRequest();
+            }
+
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            var exists = await _context.BatchExpenses.AnyAsync(e => e.ExpenseId == expenseid && e.Lot.UserId == userId);
+            if (!exists)
+            {
+                return NotFound();
+            }
+
+            var lotExists = await _context.Lots.AnyAsync(l => l.LotId == batchexpense.LotId && l.UserId == userId);
+            if (!lotExists)
+            {
+                return BadRequest("The specified Lot does not exist or does not belong to the current user.");
+            }
+
+            _context.Entry(batchexpense).State = EntityState.Modified;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                if (!BatchExpenseExists(expenseid, userId))
+                {
+                    return NotFound();
+                }
+                else
+                {
+                    throw;
+                }
+            }
+
+            return NoContent();
         }
 
-        _context.BatchExpenses.Remove(batchexpense);
-        await _context.SaveChangesAsync();
+        // POST: api/BatchExpenses
+        [HttpPost]
+        public async Task<ActionResult<BatchExpense>> PostBatchExpense(BatchExpense batchexpense)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
 
-        return NoContent();
-    }
+            var lotExists = await _context.Lots.AnyAsync(l => l.LotId == batchexpense.LotId && l.UserId == userId);
+            if (!lotExists)
+            {
+                return BadRequest("The specified Lot does not exist or does not belong to the current user.");
+            }
 
-    private bool BatchExpenseExists(string? expenseid)
-    {
-        return _context.BatchExpenses.Any(e => e.ExpenseId == expenseid);
+            _context.BatchExpenses.Add(batchexpense);
+            await _context.SaveChangesAsync();
+
+            return CreatedAtAction("GetBatchExpense", new { expenseid = batchexpense.ExpenseId }, batchexpense);
+        }
+
+        // DELETE: api/BatchExpenses/5
+        [HttpDelete("{expenseid}")]
+        public async Task<IActionResult> DeleteBatchExpense(string? expenseid)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            var batchexpense = await _context.BatchExpenses
+                .FirstOrDefaultAsync(e => e.ExpenseId == expenseid && e.Lot.UserId == userId);
+            if (batchexpense == null)
+            {
+                return NotFound();
+            }
+
+            _context.BatchExpenses.Remove(batchexpense);
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+
+        private bool BatchExpenseExists(string? expenseid, string userId)
+        {
+            return _context.BatchExpenses.Any(e => e.ExpenseId == expenseid && e.Lot.UserId == userId);
+        }
     }
 }
+

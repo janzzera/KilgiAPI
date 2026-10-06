@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -25,6 +26,7 @@ namespace KilgiAPI.Controllers
         }
 
         [HttpPost("login")]
+        [AllowAnonymous]
         public async Task<IActionResult> Login([FromBody] LoginModel login)
         {
             var user = await _context.Users.FirstOrDefaultAsync(user => user.Username == login.Username);
@@ -38,7 +40,7 @@ namespace KilgiAPI.Controllers
             if (!VerifyPasswordHash(login.Password, passwordHash, passwordSalt))
                 return Unauthorized("Invalid username or password.");
 
-            var token = GenerateJwtToken(user.Username);
+            var token = GenerateJwtToken(user);
             return Ok(new { token });
         }
 
@@ -61,15 +63,18 @@ namespace KilgiAPI.Controllers
             return true;
         }
 
-        private string GenerateJwtToken(string username)
+        private string GenerateJwtToken(User user)
         {
-            var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
+            var jwtKey = _config["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key is not configured.");
+            var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
             var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
 
             var claims = new[]
             {
-                new Claim(ClaimTypes.Name, username)
-
+                new Claim(ClaimTypes.NameIdentifier, user.UserId),
+                new Claim(ClaimTypes.Name, user.Username),
+                new Claim("userId", user.UserId),
+                new Claim(JwtRegisteredClaimNames.Sub, user.UserId)
             };
 
             var token = new SecurityTokenDescriptor

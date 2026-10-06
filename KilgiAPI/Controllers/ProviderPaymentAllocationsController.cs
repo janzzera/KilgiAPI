@@ -4,98 +4,155 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-[Route("api/[controller]")]
-[ApiController]
-[Authorize]
-public class ProviderPaymentAllocationsController : ControllerBase
+namespace KilgiAPI.Controllers
 {
-    private readonly AppDbContext _context;
-    public ProviderPaymentAllocationsController(AppDbContext context)
+    [Route("api/[controller]")]
+    public class ProviderPaymentAllocationsController : BaseApiController
     {
-        _context = context;
-    }
-
-    // GET: api/ProviderPaymentAllocation
-    [HttpGet]
-    public async Task<ActionResult<IEnumerable<ProviderPaymentAllocation>>> GetProviderPaymentAllocation()
-    {
-        return await _context.ProviderPaymentAllocations.ToListAsync();
-    }
-
-    // GET: api/ProviderPaymentAllocation/5
-    [HttpGet("{allocationid}")]
-    public async Task<ActionResult<ProviderPaymentAllocation>> GetProviderPaymentAllocation(string allocationid)
-    {
-        var providerpaymentallocation = await _context.ProviderPaymentAllocations.FindAsync(allocationid);
-
-        if (providerpaymentallocation == null)
+        public ProviderPaymentAllocationsController(AppDbContext context) : base(context)
         {
-            return NotFound();
         }
 
-        return providerpaymentallocation;
-    }
-
-    // PUT: api/ProviderPaymentAllocation/5
-    // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-    [HttpPut("{allocationid}")]
-    public async Task<IActionResult> PutProviderPaymentAllocation(string? allocationid, ProviderPaymentAllocation providerpaymentallocation)
-    {
-        if (allocationid != providerpaymentallocation.AllocationId)
+        // GET: api/ProviderPaymentAllocations
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<ProviderPaymentAllocation>>> GetProviderPaymentAllocation()
         {
-            return BadRequest();
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            return await _context.ProviderPaymentAllocations
+                .Where(e => e.Payment.UserId == userId)
+                .ToListAsync();
         }
 
-        _context.Entry(providerpaymentallocation).State = EntityState.Modified;
+        // GET: api/ProviderPaymentAllocations/5
+        [HttpGet("{allocationid}")]
+        public async Task<ActionResult<ProviderPaymentAllocation>> GetProviderPaymentAllocation(string allocationid)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
 
-        try
-        {
-            await _context.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (!ProviderPaymentAllocationExists(allocationid))
+            var providerpaymentallocation = await _context.ProviderPaymentAllocations
+                .FirstOrDefaultAsync(e => e.AllocationId == allocationid && e.Payment.UserId == userId);
+
+            if (providerpaymentallocation == null)
             {
                 return NotFound();
             }
-            else
-            {
-                throw;
-            }
+
+            return providerpaymentallocation;
         }
 
-        return NoContent();
-    }
-
-    // POST: api/ProviderPaymentAllocation
-    // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-    [HttpPost]
-    public async Task<ActionResult<ProviderPaymentAllocation>> PostProviderPaymentAllocation(ProviderPaymentAllocation providerpaymentallocation)
-    {
-        _context.ProviderPaymentAllocations.Add(providerpaymentallocation);
-        await _context.SaveChangesAsync();
-
-        return CreatedAtAction("GetProviderPaymentAllocation", new { allocationid = providerpaymentallocation.AllocationId }, providerpaymentallocation);
-    }
-
-    // DELETE: api/ProviderPaymentAllocation/5
-    [HttpDelete("{allocationid}")]
-    public async Task<IActionResult> DeleteProviderPaymentAllocation(string? allocationid)
-    {
-        var providerpaymentallocation = await _context.ProviderPaymentAllocations.FindAsync(allocationid);
-        if (providerpaymentallocation == null)
+        // PUT: api/ProviderPaymentAllocations/5
+        [HttpPut("{allocationid}")]
+        public async Task<IActionResult> PutProviderPaymentAllocation(string? allocationid, ProviderPaymentAllocation providerpaymentallocation)
         {
-            return NotFound();
+            if (allocationid != providerpaymentallocation.AllocationId)
+            {
+                return BadRequest();
+            }
+
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            var exists = await _context.ProviderPaymentAllocations
+                .AnyAsync(e => e.AllocationId == allocationid && e.Payment.UserId == userId);
+            if (!exists)
+            {
+                return NotFound();
+            }
+
+            var paymentBelongsToUser = await _context.ProviderPayments
+                .AnyAsync(p => p.PaymentId == providerpaymentallocation.PaymentId && p.UserId == userId);
+            if (!paymentBelongsToUser)
+            {
+                return BadRequest("The specified Payment does not exist or does not belong to the current user.");
+            }
+
+            var lotBelongsToUser = await _context.Lots
+                .AnyAsync(l => l.LotId == providerpaymentallocation.LotId && l.UserId == userId);
+            if (!lotBelongsToUser)
+            {
+                return BadRequest("The specified Lot does not exist or does not belong to the current user.");
+            }
+
+            _context.Entry(providerpaymentallocation).State = EntityState.Modified;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                if (!ProviderPaymentAllocationExists(allocationid, userId))
+                {
+                    return NotFound();
+                }
+                else
+                {
+                    throw;
+                }
+            }
+
+            return NoContent();
         }
 
-        _context.ProviderPaymentAllocations.Remove(providerpaymentallocation);
-        await _context.SaveChangesAsync();
+        // POST: api/ProviderPaymentAllocations
+        [HttpPost]
+        public async Task<ActionResult<ProviderPaymentAllocation>> PostProviderPaymentAllocation(ProviderPaymentAllocation providerpaymentallocation)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
 
-        return NoContent();
-    }
+            var paymentBelongsToUser = await _context.ProviderPayments
+                .AnyAsync(p => p.PaymentId == providerpaymentallocation.PaymentId && p.UserId == userId);
+            if (!paymentBelongsToUser)
+            {
+                return BadRequest("The specified Payment does not exist or does not belong to the current user.");
+            }
 
-    private bool ProviderPaymentAllocationExists(string? allocationid)
-    {
-        return _context.ProviderPaymentAllocations.Any(e => e.AllocationId == allocationid);
+            var lotBelongsToUser = await _context.Lots
+                .AnyAsync(l => l.LotId == providerpaymentallocation.LotId && l.UserId == userId);
+            if (!lotBelongsToUser)
+            {
+                return BadRequest("The specified Lot does not exist or does not belong to the current user.");
+            }
+
+            _context.ProviderPaymentAllocations.Add(providerpaymentallocation);
+            await _context.SaveChangesAsync();
+
+            return CreatedAtAction("GetProviderPaymentAllocation", new { allocationid = providerpaymentallocation.AllocationId }, providerpaymentallocation);
+        }
+
+        // DELETE: api/ProviderPaymentAllocations/5
+        [HttpDelete("{allocationid}")]
+        public async Task<IActionResult> DeleteProviderPaymentAllocation(string? allocationid)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            var providerpaymentallocation = await _context.ProviderPaymentAllocations
+                .FirstOrDefaultAsync(e => e.AllocationId == allocationid && e.Payment.UserId == userId);
+            if (providerpaymentallocation == null)
+            {
+                return NotFound();
+            }
+
+            _context.ProviderPaymentAllocations.Remove(providerpaymentallocation);
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+
+        private bool ProviderPaymentAllocationExists(string? allocationid, string userId)
+        {
+            return _context.ProviderPaymentAllocations.Any(e => e.AllocationId == allocationid && e.Payment.UserId == userId);
+        }
     }
 }
+

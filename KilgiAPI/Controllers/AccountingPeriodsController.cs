@@ -4,98 +4,126 @@ using KilgiAPI.Models;
 using KilgiAPI.Data;
 using Microsoft.AspNetCore.Authorization;
 
-[Route("api/[controller]")]
-[ApiController]
-[Authorize]
-public class AccountingPeriodsController : ControllerBase
+namespace KilgiAPI.Controllers
 {
-    private readonly AppDbContext _context;
-    public AccountingPeriodsController(AppDbContext context)
+    [Route("api/[controller]")]
+    public class AccountingPeriodsController : BaseApiController
     {
-        _context = context;
-    }
-
-    // GET: api/AccountingPeriod
-    [HttpGet]
-    public async Task<ActionResult<IEnumerable<AccountingPeriod>>> GetAccountingPeriod()
-    {
-        return await _context.AccountingPeriods.ToListAsync();
-    }
-
-    // GET: api/AccountingPeriod/5
-    [HttpGet("{periodid}")]
-    public async Task<ActionResult<AccountingPeriod>> GetAccountingPeriod(long periodid)
-    {
-        var accountingperiod = await _context.AccountingPeriods.FindAsync(periodid);
-
-        if (accountingperiod == null)
+        public AccountingPeriodsController(AppDbContext context) : base(context)
         {
-            return NotFound();
         }
 
-        return accountingperiod;
-    }
-
-    // PUT: api/AccountingPeriod/5
-    // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-    [HttpPut("{periodid}")]
-    public async Task<IActionResult> PutAccountingPeriod(long? periodid, AccountingPeriod accountingperiod)
-    {
-        if (periodid != accountingperiod.PeriodId)
+        // GET: api/AccountingPeriods
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<AccountingPeriod>>> GetAccountingPeriod()
         {
-            return BadRequest();
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            return await _context.AccountingPeriods.Where(e => e.UserId == userId).ToListAsync();
         }
 
-        _context.Entry(accountingperiod).State = EntityState.Modified;
+        // GET: api/AccountingPeriods/5
+        [HttpGet("{periodid}")]
+        public async Task<ActionResult<AccountingPeriod>> GetAccountingPeriod(long periodid)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
 
-        try
-        {
-            await _context.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (!AccountingPeriodExists(periodid))
+            var accountingperiod = await _context.AccountingPeriods
+                .FirstOrDefaultAsync(e => e.PeriodId == periodid && e.UserId == userId);
+
+            if (accountingperiod == null)
             {
                 return NotFound();
             }
-            else
-            {
-                throw;
-            }
+
+            return accountingperiod;
         }
 
-        return NoContent();
-    }
-
-    // POST: api/AccountingPeriod
-    // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-    [HttpPost]
-    public async Task<ActionResult<AccountingPeriod>> PostAccountingPeriod(AccountingPeriod accountingperiod)
-    {
-        _context.AccountingPeriods.Add(accountingperiod);
-        await _context.SaveChangesAsync();
-
-        return CreatedAtAction("GetAccountingPeriod", new { periodid = accountingperiod.PeriodId }, accountingperiod);
-    }
-
-    // DELETE: api/AccountingPeriod/5
-    [HttpDelete("{periodid}")]
-    public async Task<IActionResult> DeleteAccountingPeriod(long? periodid)
-    {
-        var accountingperiod = await _context.AccountingPeriods.FindAsync(periodid);
-        if (accountingperiod == null)
+        // PUT: api/AccountingPeriods/5
+        [HttpPut("{periodid}")]
+        public async Task<IActionResult> PutAccountingPeriod(long? periodid, AccountingPeriod accountingperiod)
         {
-            return NotFound();
+            if (periodid != accountingperiod.PeriodId)
+            {
+                return BadRequest();
+            }
+
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            var exists = await _context.AccountingPeriods.AnyAsync(e => e.PeriodId == periodid && e.UserId == userId);
+            if (!exists)
+            {
+                return NotFound();
+            }
+
+            accountingperiod.UserId = userId;
+            _context.Entry(accountingperiod).State = EntityState.Modified;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                if (!AccountingPeriodExists(periodid, userId))
+                {
+                    return NotFound();
+                }
+                else
+                {
+                    throw;
+                }
+            }
+
+            return NoContent();
         }
 
-        _context.AccountingPeriods.Remove(accountingperiod);
-        await _context.SaveChangesAsync();
+        // POST: api/AccountingPeriods
+        [HttpPost]
+        public async Task<ActionResult<AccountingPeriod>> PostAccountingPeriod(AccountingPeriod accountingperiod)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
 
-        return NoContent();
-    }
+            accountingperiod.UserId = userId;
+            _context.AccountingPeriods.Add(accountingperiod);
+            await _context.SaveChangesAsync();
 
-    private bool AccountingPeriodExists(long? periodid)
-    {
-        return _context.AccountingPeriods.Any(e => e.PeriodId == periodid);
+            return CreatedAtAction("GetAccountingPeriod", new { periodid = accountingperiod.PeriodId }, accountingperiod);
+        }
+
+        // DELETE: api/AccountingPeriods/5
+        [HttpDelete("{periodid}")]
+        public async Task<IActionResult> DeleteAccountingPeriod(long? periodid)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            var accountingperiod = await _context.AccountingPeriods
+                .FirstOrDefaultAsync(e => e.PeriodId == periodid && e.UserId == userId);
+            if (accountingperiod == null)
+            {
+                return NotFound();
+            }
+
+            _context.AccountingPeriods.Remove(accountingperiod);
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+
+        private bool AccountingPeriodExists(long? periodid, string userId)
+        {
+            return _context.AccountingPeriods.Any(e => e.PeriodId == periodid && e.UserId == userId);
+        }
     }
 }
+

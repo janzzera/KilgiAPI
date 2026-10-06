@@ -4,98 +4,127 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-[Route("api/[controller]")]
-[ApiController]
-[Authorize]
-public class ProvidersController : ControllerBase
+namespace KilgiAPI.Controllers
 {
-    private readonly AppDbContext _context;
-    public ProvidersController(AppDbContext context)
+    [Route("api/[controller]")]
+    public class ProvidersController : BaseApiController
     {
-        _context = context;
-    }
-
-    // GET: api/Provider
-    [HttpGet]
-    public async Task<ActionResult<IEnumerable<Provider>>> GetProvider()
-    {
-        return await _context.Providers.ToListAsync();
-    }
-
-    // GET: api/Provider/5
-    [HttpGet("{providerid}")]
-    public async Task<ActionResult<Provider>> GetProvider(string providerid)
-    {
-        var provider = await _context.Providers.FindAsync(providerid);
-
-        if (provider == null)
+        public ProvidersController(AppDbContext context) : base(context)
         {
-            return NotFound();
         }
 
-        return provider;
-    }
-
-    // PUT: api/Provider/5
-    // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-    [HttpPut("{providerid}")]
-    public async Task<IActionResult> PutProvider(string? providerid, Provider provider)
-    {
-        if (providerid != provider.ProviderId)
+        // GET: api/Providers
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<Provider>>> GetProvider()
         {
-            return BadRequest();
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            return await _context.Providers.Where(e => e.UserId == userId).ToListAsync();
         }
 
-        _context.Entry(provider).State = EntityState.Modified;
+        // GET: api/Providers/5
+        [HttpGet("{providerid}")]
+        public async Task<ActionResult<Provider>> GetProvider(string providerid)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
 
-        try
-        {
-            await _context.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (!ProviderExists(providerid))
+            var provider = await _context.Providers
+                .FirstOrDefaultAsync(e => e.ProviderId == providerid && e.UserId == userId);
+
+            if (provider == null)
             {
                 return NotFound();
             }
-            else
-            {
-                throw;
-            }
+
+            return provider;
         }
 
-        return NoContent();
-    }
-
-    // POST: api/Provider
-    // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-    [HttpPost]
-    public async Task<ActionResult<Provider>> PostProvider(Provider provider)
-    {
-        _context.Providers.Add(provider);
-        await _context.SaveChangesAsync();
-
-        return CreatedAtAction("GetProvider", new { providerid = provider.ProviderId }, provider);
-    }
-
-    // DELETE: api/Provider/5
-    [HttpDelete("{providerid}")]
-    public async Task<IActionResult> DeleteProvider(string? providerid)
-    {
-        var provider = await _context.Providers.FindAsync(providerid);
-        if (provider == null)
+        // PUT: api/Providers/5
+        [HttpPut("{providerid}")]
+        public async Task<IActionResult> PutProvider(string? providerid, Provider provider)
         {
-            return NotFound();
+            if (providerid != provider.ProviderId)
+            {
+                return BadRequest();
+            }
+
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            var exists = await _context.Providers
+                .AnyAsync(e => e.ProviderId == providerid && e.UserId == userId);
+            if (!exists)
+            {
+                return NotFound();
+            }
+
+            provider.UserId = userId;
+            _context.Entry(provider).State = EntityState.Modified;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                if (!ProviderExists(providerid, userId))
+                {
+                    return NotFound();
+                }
+                else
+                {
+                    throw;
+                }
+            }
+
+            return NoContent();
         }
 
-        _context.Providers.Remove(provider);
-        await _context.SaveChangesAsync();
+        // POST: api/Providers
+        [HttpPost]
+        public async Task<ActionResult<Provider>> PostProvider(Provider provider)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
 
-        return NoContent();
-    }
+            provider.UserId = userId;
+            _context.Providers.Add(provider);
+            await _context.SaveChangesAsync();
 
-    private bool ProviderExists(string? providerid)
-    {
-        return _context.Providers.Any(e => e.ProviderId == providerid);
+            return CreatedAtAction("GetProvider", new { providerid = provider.ProviderId }, provider);
+        }
+
+        // DELETE: api/Providers/5
+        [HttpDelete("{providerid}")]
+        public async Task<IActionResult> DeleteProvider(string? providerid)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            var provider = await _context.Providers
+                .FirstOrDefaultAsync(e => e.ProviderId == providerid && e.UserId == userId);
+            if (provider == null)
+            {
+                return NotFound();
+            }
+
+            _context.Providers.Remove(provider);
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+
+        private bool ProviderExists(string? providerid, string userId)
+        {
+            return _context.Providers.Any(e => e.ProviderId == providerid && e.UserId == userId);
+        }
     }
 }
+

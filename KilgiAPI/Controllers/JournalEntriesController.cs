@@ -4,98 +4,127 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-[Route("api/[controller]")]
-[ApiController]
-[Authorize]
-public class JournalEntriesController : ControllerBase
+namespace KilgiAPI.Controllers
 {
-    private readonly AppDbContext _context;
-    public JournalEntriesController(AppDbContext context)
+    [Route("api/[controller]")]
+    public class JournalEntriesController : BaseApiController
     {
-        _context = context;
-    }
-
-    // GET: api/JournalEntry
-    [HttpGet]
-    public async Task<ActionResult<IEnumerable<JournalEntry>>> GetJournalEntry()
-    {
-        return await _context.JournalEntries.ToListAsync();
-    }
-
-    // GET: api/JournalEntry/5
-    [HttpGet("{entryid}")]
-    public async Task<ActionResult<JournalEntry>> GetJournalEntry(string entryid)
-    {
-        var journalentry = await _context.JournalEntries.FindAsync(entryid);
-
-        if (journalentry == null)
+        public JournalEntriesController(AppDbContext context) : base(context)
         {
-            return NotFound();
         }
 
-        return journalentry;
-    }
-
-    // PUT: api/JournalEntry/5
-    // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-    [HttpPut("{entryid}")]
-    public async Task<IActionResult> PutJournalEntry(string? entryid, JournalEntry journalentry)
-    {
-        if (entryid != journalentry.EntryId)
+        // GET: api/JournalEntries
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<JournalEntry>>> GetJournalEntry()
         {
-            return BadRequest();
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            return await _context.JournalEntries.Where(e => e.UserId == userId).ToListAsync();
         }
 
-        _context.Entry(journalentry).State = EntityState.Modified;
+        // GET: api/JournalEntries/5
+        [HttpGet("{entryid}")]
+        public async Task<ActionResult<JournalEntry>> GetJournalEntry(string entryid)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
 
-        try
-        {
-            await _context.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (!JournalEntryExists(entryid))
+            var journalentry = await _context.JournalEntries
+                .FirstOrDefaultAsync(e => e.EntryId == entryid && e.UserId == userId);
+
+            if (journalentry == null)
             {
                 return NotFound();
             }
-            else
-            {
-                throw;
-            }
+
+            return journalentry;
         }
 
-        return NoContent();
-    }
-
-    // POST: api/JournalEntry
-    // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-    [HttpPost]
-    public async Task<ActionResult<JournalEntry>> PostJournalEntry(JournalEntry journalentry)
-    {
-        _context.JournalEntries.Add(journalentry);
-        await _context.SaveChangesAsync();
-
-        return CreatedAtAction("GetJournalEntry", new { entryid = journalentry.EntryId }, journalentry);
-    }
-
-    // DELETE: api/JournalEntry/5
-    [HttpDelete("{entryid}")]
-    public async Task<IActionResult> DeleteJournalEntry(string? entryid)
-    {
-        var journalentry = await _context.JournalEntries.FindAsync(entryid);
-        if (journalentry == null)
+        // PUT: api/JournalEntries/5
+        [HttpPut("{entryid}")]
+        public async Task<IActionResult> PutJournalEntry(string? entryid, JournalEntry journalentry)
         {
-            return NotFound();
+            if (entryid != journalentry.EntryId)
+            {
+                return BadRequest();
+            }
+
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            var exists = await _context.JournalEntries
+                .AnyAsync(e => e.EntryId == entryid && e.UserId == userId);
+            if (!exists)
+            {
+                return NotFound();
+            }
+
+            journalentry.UserId = userId;
+            _context.Entry(journalentry).State = EntityState.Modified;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                if (!JournalEntryExists(entryid, userId))
+                {
+                    return NotFound();
+                }
+                else
+                {
+                    throw;
+                }
+            }
+
+            return NoContent();
         }
 
-        _context.JournalEntries.Remove(journalentry);
-        await _context.SaveChangesAsync();
+        // POST: api/JournalEntries
+        [HttpPost]
+        public async Task<ActionResult<JournalEntry>> PostJournalEntry(JournalEntry journalentry)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
 
-        return NoContent();
-    }
+            journalentry.UserId = userId;
+            _context.JournalEntries.Add(journalentry);
+            await _context.SaveChangesAsync();
 
-    private bool JournalEntryExists(string? entryid)
-    {
-        return _context.JournalEntries.Any(e => e.EntryId == entryid);
+            return CreatedAtAction("GetJournalEntry", new { entryid = journalentry.EntryId }, journalentry);
+        }
+
+        // DELETE: api/JournalEntries/5
+        [HttpDelete("{entryid}")]
+        public async Task<IActionResult> DeleteJournalEntry(string? entryid)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            var journalentry = await _context.JournalEntries
+                .FirstOrDefaultAsync(e => e.EntryId == entryid && e.UserId == userId);
+            if (journalentry == null)
+            {
+                return NotFound();
+            }
+
+            _context.JournalEntries.Remove(journalentry);
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+
+        private bool JournalEntryExists(string? entryid, string userId)
+        {
+            return _context.JournalEntries.Any(e => e.EntryId == entryid && e.UserId == userId);
+        }
     }
 }
+

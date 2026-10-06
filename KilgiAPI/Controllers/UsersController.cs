@@ -1,4 +1,4 @@
-﻿using KilgiAPI.Data;
+using KilgiAPI.Data;
 using KilgiAPI.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -8,25 +8,34 @@ using Microsoft.EntityFrameworkCore;
 namespace KilgiAPI.Controllers
 {
     [Route("api/[controller]")]
-    [ApiController]
-    [Authorize]
-    public class UsersController : ControllerBase
+    public class UsersController : BaseApiController
     {
-        private readonly AppDbContext _context = new AppDbContext();
-        public UsersController(AppDbContext context)
+        public UsersController(AppDbContext context) : base(context)
         {
-            _context = context;
         }
 
         [HttpGet]
         public async Task<ActionResult<IEnumerable<User>>> GetUser()
         {
-            return await _context.Users.ToListAsync();
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            return await _context.Users.Where(user => user.UserId == userId).ToListAsync();
         }
 
         [HttpGet("{userId}")]
-        public async Task<ActionResult<User>> GetUser(String userId)
+        public async Task<ActionResult<User>> GetUser(string userId)
         {
+            var currentUserId = CurrentUserId;
+            if (string.IsNullOrEmpty(currentUserId))
+                return Unauthorized();
+
+            if (userId != currentUserId)
+            {
+                return Forbid();
+            }
+
             var user = await _context.Users.FindAsync(userId);
 
             if (user == null)
@@ -38,17 +47,27 @@ namespace KilgiAPI.Controllers
         }
 
         [HttpPut("{userId}")]
-        public async Task<IActionResult> UpdateUser(String? userId, User user)
+        public async Task<IActionResult> UpdateUser(string? userId, User user)
         {
             if (user.UserId != userId)
                 return BadRequest();
+
+            var currentUserId = CurrentUserId;
+            if (string.IsNullOrEmpty(currentUserId))
+                return Unauthorized();
+
+            if (userId != currentUserId)
+            {
+                return Forbid();
+            }
 
             _context.Entry(user).State = EntityState.Modified;
 
             try
             {
                 await _context.SaveChangesAsync();
-            } catch (DbUpdateConcurrencyException)
+            }
+            catch (DbUpdateConcurrencyException)
             {
                 if (!UserExists(userId))
                     return NotFound();
@@ -56,7 +75,7 @@ namespace KilgiAPI.Controllers
                     throw;
             }
 
-            return NoContent(); ;
+            return NoContent();
         }
 
         [HttpPost]
@@ -66,12 +85,21 @@ namespace KilgiAPI.Controllers
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction("GetUser", new {userId = user.UserId}, user);
+            return CreatedAtAction("GetUser", new { userId = user.UserId }, user);
         }
 
         [HttpDelete("{userId}")]
-        public async Task<IActionResult> DeleteUser(String? userId)
+        public async Task<IActionResult> DeleteUser(string? userId)
         {
+            var currentUserId = CurrentUserId;
+            if (string.IsNullOrEmpty(currentUserId))
+                return Unauthorized();
+
+            if (userId != currentUserId)
+            {
+                return Forbid();
+            }
+
             var user = await _context.Users.FindAsync(userId);
 
             if (user == null)
@@ -83,9 +111,10 @@ namespace KilgiAPI.Controllers
             return NoContent();
         }
 
-        private bool UserExists(String userId)
+        private bool UserExists(string? userId)
         {
             return _context.Users.Any(user => user.UserId == userId);
         }
     }
 }
+

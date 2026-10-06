@@ -4,98 +4,141 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-[Route("api/[controller]")]
-[ApiController]
-[Authorize]
-public class ProviderPaymentsController : ControllerBase
+namespace KilgiAPI.Controllers
 {
-    private readonly AppDbContext _context;
-    public ProviderPaymentsController(AppDbContext context)
+    [Route("api/[controller]")]
+    public class ProviderPaymentsController : BaseApiController
     {
-        _context = context;
-    }
-
-    // GET: api/ProviderPayment
-    [HttpGet]
-    public async Task<ActionResult<IEnumerable<ProviderPayment>>> GetProviderPayment()
-    {
-        return await _context.ProviderPayments.ToListAsync();
-    }
-
-    // GET: api/ProviderPayment/5
-    [HttpGet("{paymentid}")]
-    public async Task<ActionResult<ProviderPayment>> GetProviderPayment(string paymentid)
-    {
-        var providerpayment = await _context.ProviderPayments.FindAsync(paymentid);
-
-        if (providerpayment == null)
+        public ProviderPaymentsController(AppDbContext context) : base(context)
         {
-            return NotFound();
         }
 
-        return providerpayment;
-    }
-
-    // PUT: api/ProviderPayment/5
-    // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-    [HttpPut("{paymentid}")]
-    public async Task<IActionResult> PutProviderPayment(string? paymentid, ProviderPayment providerpayment)
-    {
-        if (paymentid != providerpayment.PaymentId)
+        // GET: api/ProviderPayments
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<ProviderPayment>>> GetProviderPayment()
         {
-            return BadRequest();
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            return await _context.ProviderPayments.Where(e => e.UserId == userId).ToListAsync();
         }
 
-        _context.Entry(providerpayment).State = EntityState.Modified;
+        // GET: api/ProviderPayments/5
+        [HttpGet("{paymentid}")]
+        public async Task<ActionResult<ProviderPayment>> GetProviderPayment(string paymentid)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
 
-        try
-        {
-            await _context.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (!ProviderPaymentExists(paymentid))
+            var providerpayment = await _context.ProviderPayments
+                .FirstOrDefaultAsync(e => e.PaymentId == paymentid && e.UserId == userId);
+
+            if (providerpayment == null)
             {
                 return NotFound();
             }
-            else
-            {
-                throw;
-            }
+
+            return providerpayment;
         }
 
-        return NoContent();
-    }
-
-    // POST: api/ProviderPayment
-    // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-    [HttpPost]
-    public async Task<ActionResult<ProviderPayment>> PostProviderPayment(ProviderPayment providerpayment)
-    {
-        _context.ProviderPayments.Add(providerpayment);
-        await _context.SaveChangesAsync();
-
-        return CreatedAtAction("GetProviderPayment", new { paymentid = providerpayment.PaymentId }, providerpayment);
-    }
-
-    // DELETE: api/ProviderPayment/5
-    [HttpDelete("{paymentid}")]
-    public async Task<IActionResult> DeleteProviderPayment(string? paymentid)
-    {
-        var providerpayment = await _context.ProviderPayments.FindAsync(paymentid);
-        if (providerpayment == null)
+        // PUT: api/ProviderPayments/5
+        [HttpPut("{paymentid}")]
+        public async Task<IActionResult> PutProviderPayment(string? paymentid, ProviderPayment providerpayment)
         {
-            return NotFound();
+            if (paymentid != providerpayment.PaymentId)
+            {
+                return BadRequest();
+            }
+
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            var exists = await _context.ProviderPayments
+                .AnyAsync(e => e.PaymentId == paymentid && e.UserId == userId);
+            if (!exists)
+            {
+                return NotFound();
+            }
+
+            var providerBelongsToUser = await _context.Providers
+                .AnyAsync(p => p.ProviderId == providerpayment.ProviderId && p.UserId == userId);
+            if (!providerBelongsToUser)
+            {
+                return BadRequest("The specified Provider does not exist or does not belong to the current user.");
+            }
+
+            providerpayment.UserId = userId;
+            _context.Entry(providerpayment).State = EntityState.Modified;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                if (!ProviderPaymentExists(paymentid, userId))
+                {
+                    return NotFound();
+                }
+                else
+                {
+                    throw;
+                }
+            }
+
+            return NoContent();
         }
 
-        _context.ProviderPayments.Remove(providerpayment);
-        await _context.SaveChangesAsync();
+        // POST: api/ProviderPayments
+        [HttpPost]
+        public async Task<ActionResult<ProviderPayment>> PostProviderPayment(ProviderPayment providerpayment)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
 
-        return NoContent();
-    }
+            var providerBelongsToUser = await _context.Providers
+                .AnyAsync(p => p.ProviderId == providerpayment.ProviderId && p.UserId == userId);
+            if (!providerBelongsToUser)
+            {
+                return BadRequest("The specified Provider does not exist or does not belong to the current user.");
+            }
 
-    private bool ProviderPaymentExists(string? paymentid)
-    {
-        return _context.ProviderPayments.Any(e => e.PaymentId == paymentid);
+            providerpayment.UserId = userId;
+            _context.ProviderPayments.Add(providerpayment);
+            await _context.SaveChangesAsync();
+
+            return CreatedAtAction("GetProviderPayment", new { paymentid = providerpayment.PaymentId }, providerpayment);
+        }
+
+        // DELETE: api/ProviderPayments/5
+        [HttpDelete("{paymentid}")]
+        public async Task<IActionResult> DeleteProviderPayment(string? paymentid)
+        {
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            var providerpayment = await _context.ProviderPayments
+                .FirstOrDefaultAsync(e => e.PaymentId == paymentid && e.UserId == userId);
+            if (providerpayment == null)
+            {
+                return NotFound();
+            }
+
+            _context.ProviderPayments.Remove(providerpayment);
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+
+        private bool ProviderPaymentExists(string? paymentid, string userId)
+        {
+            return _context.ProviderPayments.Any(e => e.PaymentId == paymentid && e.UserId == userId);
+        }
     }
 }
+
