@@ -50,18 +50,27 @@ namespace KilgiAPI.Controllers
             {
                 var computedHash = hmac.ComputeHash(Encoding.UTF8.GetBytes(password));
 
-                if (computedHash.Length != storedHash.Length) 
-                    return false;
-
-                for (int i = 0; i < computedHash.Length; i++)
-                {
-                    if (computedHash[i] != storedHash[i])
-                        return false;
-                }
+                return CryptographicOperations.FixedTimeEquals(computedHash, storedHash);
             }
 
             return true;
         }
+
+        public static void CreatePasswordHash(string password, out string passwordHash, out string salt)
+        {
+            if (string.IsNullOrWhiteSpace(password))
+                throw new ArgumentException("Password cannot be empty or whitespace.", nameof(password));
+
+            using var hmac = new HMACSHA512();
+
+            byte[] saltBytes = hmac.Key;
+            byte[] hashBytes = hmac.ComputeHash(Encoding.UTF8.GetBytes(password));
+
+            salt = Convert.ToBase64String(saltBytes);
+            passwordHash = Convert.ToBase64String(hashBytes);
+
+        }
+
 
         private string GenerateJwtToken(User user)
         {

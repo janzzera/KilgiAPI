@@ -2,6 +2,7 @@ using KilgiAPI.Data;
 using KilgiAPI.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -82,10 +83,27 @@ namespace KilgiAPI.Controllers
         [AllowAnonymous]
         public async Task<ActionResult<User>> PostUser(User user)
         {
-            _context.Users.Add(user);
+            if (user == null)
+                return BadRequest();
+            AuthController.CreatePasswordHash(user.PasswordHash, out string passwordHash, out string passwordSalt);
+
+            var newUser = new User
+            {
+                UserId = Guid.NewGuid().ToString(),
+                Username = user.Username,
+                DisplayName = user.DisplayName,
+                BusinessName = user.BusinessName,
+                PasswordHash = passwordHash,
+                PasswordSalt = passwordSalt,
+                AccountStatus = "Active",
+                CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+
+            };
+            _context.Users.Add(newUser);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction("GetUser", new { userId = user.UserId }, user);
+            return CreatedAtAction("GetUser", new { userId = newUser.UserId }, newUser);
         }
 
         [HttpDelete("{userId}")]
